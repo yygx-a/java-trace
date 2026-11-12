@@ -51,7 +51,7 @@ jobs:
           }
           $lines | Set-Content -LiteralPath 'idea-plugin/build/distributions/SHA256SUMS.txt' -Encoding utf8NoBOM
           @('## Build result', '', 'All module checks and plugin packaging passed.',
-            '', 'Download the plugin ZIP and SHA256SUMS.txt from this run’s Artifacts.',
+            '', 'Download the plugin ZIP and SHA256SUMS.txt from the Artifacts section of this run.',
             '', 'Desktop Run-console interactions still require manual verification.') |
             Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
 
