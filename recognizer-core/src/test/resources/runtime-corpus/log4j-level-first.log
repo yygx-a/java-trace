@@ -1,0 +1,19 @@
+ERROR [worker] example.Corpus - synthetic request
+java.lang.IllegalStateException: root
+	at example.Corpus.run(Corpus.java:42) ~[?:?]
+	Suppressed: java.lang.IllegalStateException: first
+		at example.Corpus.run(Corpus.java:42) ~[?:?]
+	Caused by: RuntimeCorpusGenerator$QuietException: quiet nested wrapper
+	Caused by: java.lang.IllegalStateException: synthetic 中文 🧩
+		... 1 more
+	Caused by: java.lang.IllegalStateException: cause
+		... 1 more
+	Suppressed: java.lang.IllegalStateException: second
+		at example.Corpus.run(Corpus.java:42) ~[?:?]
+	Caused by: java.lang.IllegalStateException: root
+		... 1 more
+	Caused by: java.lang.IllegalStateException: root cause
+		... 1 more
+Caused by: java.lang.IllegalStateException: root cause
+	... 1 more
+INFO corpus - finished

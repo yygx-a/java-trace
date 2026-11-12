@@ -1,0 +1,6 @@
+2023-11-15 06:13:20.000 [worker] ERROR example.Corpus - synthetic request
+java.lang.IllegalStateException: synthetic 中文 🧩
+	at example.Corpus.run(Corpus.java:42)
+Caused by: java.lang.IllegalStateException: cause
+	... 1 common frames omitted
+INFO corpus - finished

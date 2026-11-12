@@ -1,0 +1,10 @@
+ERROR corpus - synthetic request
+java.lang.IllegalStateException: synthetic 中文 🧩
+	at example.Corpus.run(Corpus.java:42)
+Caused by: java.lang.IllegalStateException: cause
+	... 1 more
+java.lang.IllegalStateException: synthetic 中文 🧩
+	at example.Corpus.run(Corpus.java:42)
+Caused by: java.lang.IllegalStateException: cause
+	... 1 more
+INFO corpus - finished

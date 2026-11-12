@@ -1,0 +1,22 @@
+[INFO] synthetic startup
+2026-11-09T09:00:00.000+08:00 ERROR 123 --- [main] example.Work : 处理失败 🚧
+Exception in thread "main" example.BadOperation: 请求 🚧
+	at example.Work.load(Work.java:18)
+	at java.base@21/java.lang.Thread.run(Thread.java:1583)
+	Suppressed: example.CleanupFailure: 关闭失败
+		at app//example.Resource.close(Resource.java:11)
+		... 1 more
+	Caused by: java.io.IOException: bad handle
+		at example.Resource.<init>(Resource.java:6)
+		... 2 more
+	Suppressed: java.lang.IllegalStateException: already closed
+		... 2 more
+Caused by: java.lang.IllegalArgumentException: bad input
+	at example.Parser.parse(Unknown Source)
+	... 1 more
+Caused by: java.lang.NullPointerException
+	at example.Parser.nativeRead(Native Method)
+	... 1 more
+example.SecondFailure: another task
+	at example.Work.run(Work.java:27)
+INFO recovered

@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Check and package on Windows / JDK 21
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle and validate Wrapper
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-read-only: ${{ github.event_name == 'pull_request' || github.ref != 'refs/heads/main' }}
+
+      - name: Check modules and build plugin
+        shell: pwsh
+        run: >-
+          .\gradlew.bat --no-daemon --console=plain
+          :recognizer-core:check :issue-store:check :idea-plugin:check
+          :idea-plugin:buildPlugin :idea-plugin:verifyPluginProjectConfiguration
+
+      - name: Create SHA-256 checksums
+        shell: pwsh
+        run: |
+          $packages = @(Get-ChildItem -LiteralPath 'idea-plugin/build/distributions' -Filter '*.zip' -File)
+          if ($packages.Count -ne 1) { throw 'Expected exactly one plugin ZIP from this clean checkout.' }
+          $lines = $packages | Get-FileHash -Algorithm SHA256 | ForEach-Object {
+            $_.Hash.ToLowerInvariant() + '  ' + (Split-Path -Leaf $_.Path)
+          }
+          $lines | Set-Content -LiteralPath 'idea-plugin/build/distributions/SHA256SUMS.txt' -Encoding utf8NoBOM
+          @('## Build result', '', 'All module checks and plugin packaging passed.',
+            '', 'Download the plugin ZIP and SHA256SUMS.txt from this run’s Artifacts.',
+            '', 'Desktop Run-console interactions still require manual verification.') |
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload plugin and checksums
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: java-trace-${{ github.sha }}
+          path: |
+            idea-plugin/build/distributions/*.zip
+            idea-plugin/build/distributions/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14

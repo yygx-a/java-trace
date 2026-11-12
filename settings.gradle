@@ -1,0 +1,9 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'java-trace'
+include 'recognizer-core', 'issue-store', 'idea-plugin'

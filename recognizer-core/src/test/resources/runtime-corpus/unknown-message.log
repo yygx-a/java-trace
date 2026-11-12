@@ -1,0 +1,5 @@
+ERROR corpus - synthetic request
+java.lang.IllegalStateException: message
+unknown extra message
+	at example.Corpus.run(Corpus.java:42)
+INFO corpus - finished

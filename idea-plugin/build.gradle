@@ -1,0 +1,88 @@
+plugins {
+    id 'java'
+    id 'org.jetbrains.intellij.platform' version '2.12.0'
+}
+
+version = '0.4.6'
+
+repositories {
+    mavenCentral()
+    intellijPlatform {
+        defaultRepositories()
+    }
+}
+
+dependencies {
+    implementation project(':recognizer-core')
+    implementation project(':issue-store')
+    intellijPlatform {
+        def installation = providers.gradleProperty('ideaHome')
+        if (installation.present) {
+            local(installation.get())
+        } else {
+            intellijIdea('2025.3.3')
+        }
+    }
+}
+
+intellijPlatform {
+    buildSearchableOptions = false
+    instrumentCode = false
+    pluginConfiguration {
+        ideaVersion {
+            sinceBuild = '253.31033.145'
+            untilBuild = '253.*'
+        }
+    }
+}
+
+tasks.register('lineBoundaryRegression', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'local.javatrace.idea.LineBoundariesRegression'
+}
+
+tasks.named('check') { dependsOn lineBoundaryRegression }
+
+tasks.register('previewLifetimeRegression', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'local.javatrace.idea.PreviewLifetimeRegression'
+}
+tasks.named('check') { dependsOn previewLifetimeRegression }
+
+tasks.register('previewEvidenceRegression', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'local.javatrace.idea.PreviewEvidenceRegression'
+}
+tasks.named('check') { dependsOn previewEvidenceRegression }
+
+tasks.register('deepSeekRegression', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    // 复用目标 SDK 的 Gson，不另行打包或下载 JSON/AI 框架。
+    classpath += sourceSets.main.compileClasspath.filter { it.name == 'module-intellij.libraries.gson.jar' }
+    mainClass = 'local.javatrace.idea.DeepSeekRegression'
+}
+tasks.named('check') { dependsOn deepSeekRegression }
+
+tasks.register('issuePresentationRegression', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'local.javatrace.idea.IssuePresentationRegression'
+}
+tasks.named('check') { dependsOn issuePresentationRegression }
+
+tasks.register('credentialsRegression', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    classpath += sourceSets.main.compileClasspath.filter { it.name in ['app.jar', 'util-8.jar', 'util.jar', 'util_rt.jar', 'annotations.jar'] }
+    mainClass = 'local.javatrace.idea.DeepSeekCredentialsRegression'
+}
+tasks.named('check') { dependsOn credentialsRegression }
+
+tasks.named('test') {
+    // 与核心回归一致，使用上面的 JDK 断言程序，不启用空的测试框架扫描。
+    enabled = false
+}

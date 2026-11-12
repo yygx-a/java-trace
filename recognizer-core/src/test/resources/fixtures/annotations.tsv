@@ -1,0 +1,25 @@
+# 来源为人工合成。行号从 1 开始，包含首尾行，- 代表无范围或无诊断。
+# 文件	来源	锚点行	预期状态	主体行	上下文行	预期警告
+nested.log	合成	1	NOT_FOUND	-	-	-
+nested.log	合成	2	FOUND	3-19	2-2	-
+nested.log	合成	3	FOUND	3-19	2-2	-
+nested.log	合成	5	FOUND	3-19	2-2	-
+nested.log	合成	7	FOUND	3-19	2-2	-
+nested.log	合成	9	FOUND	3-19	2-2	-
+nested.log	合成	12	FOUND	3-19	2-2	-
+nested.log	合成	14	FOUND	3-19	2-2	-
+nested.log	合成	19	FOUND	3-19	2-2	-
+nested.log	合成	20	FOUND	20-21	-	-
+nested.log	合成	21	FOUND	20-21	-	-
+nested.log	合成	22	NOT_FOUND	-	-	-
+fragments.log	合成	1	NOT_FOUND	-	-	-
+fragments.log	合成	2	NOT_FOUND	-	-	-
+fragments.log	合成	3	UNCERTAIN	3-3	-	MISSING_HEADER
+fragments.log	合成	5	UNCERTAIN	5-6	-	AMBIGUOUS_BOUNDARY
+fragments.log	合成	7	NOT_FOUND	-	-	-
+fragments.log	合成	8	UNCERTAIN	8-8	-	MISSING_HEADER
+fragments.log	合成	10	UNCERTAIN	10-10	-	MISSING_STACK
+fragments.log	合成	13	UNCERTAIN	12-14	-	AMBIGUOUS_BOUNDARY
+fragments.log	合成	14	UNCERTAIN	12-14	-	AMBIGUOUS_BOUNDARY
+fragments.log	合成	15	UNCERTAIN	15-15	-	MISSING_HEADER
+fragments.log	合成	16	NOT_FOUND	-	-	-

@@ -1,0 +1,7 @@
+ERROR corpus - synthetic request
+java.lang.IllegalStateException: cycle
+	at example.Corpus.run(Corpus.java:42)
+Caused by: java.lang.IllegalStateException: inner
+	... 1 more
+Caused by: [CIRCULAR REFERENCE: java.lang.IllegalStateException: cycle]
+INFO corpus - finished

@@ -1,0 +1,37 @@
+.gradle/
+.intellijPlatform/
+.idea/
+build/
+out/
+*.iml
+
+# Local credentials, records and environment overrides.
+.env
+.env.*
+!.env.example
+*.kdbx
+*.key
+*.pem
+*.p12
+*.pfx
+*.jti
+.java-trace/
+gradle-local.properties
+local.properties
+
+# Workstation history/evidence remains local. Public documentation is explicit.
+/PROJECT_PLAN.md
+/docs/*
+!/docs/architecture.md
+!/docs/privacy.md
+!/docs/build-and-release.md
+!/docs/text-format-contract.md
+!/docs/smoke/
+/docs/smoke/*
+!/docs/smoke/ConsoleProbeSample.java
+!/docs/smoke/RuntimeCorpusGenerator.java
+
+# Logs are private by default; these two directories contain only synthetic fixtures.
+*.log
+!recognizer-core/src/test/resources/fixtures/*.log
+!recognizer-core/src/test/resources/runtime-corpus/*.log

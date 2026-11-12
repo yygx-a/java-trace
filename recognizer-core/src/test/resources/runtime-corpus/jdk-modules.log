@@ -1,0 +1,5 @@
+ERROR corpus - synthetic request
+java.lang.IllegalStateException: module
+	at app/example.module@1.0/example.Corpus.run(Corpus.java:12)
+	at java.base/java.base@21/java.lang.Thread.run(Unknown Source)
+INFO corpus - finished

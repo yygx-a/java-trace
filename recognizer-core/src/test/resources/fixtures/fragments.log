@@ -1,0 +1,17 @@
+Worker mentioned an Exception at dinner.
+ERROR could not fetch a file
+	at example.Work.run(Work.java:27)
+INFO recovered
+java.lang.IllegalStateException: failed
+	at example.Work.load(Work.java:18)
+part of a message or another stream
+	at example.Work.run(Work.java:27)
+WARN still running
+java.lang.IllegalArgumentException: ended before the frames
+[INFO] done
+java.lang.IllegalStateException: bad continuation
+	at example.Work.load(Work.java:18)
+Caused by: [CIRCULAR REFERENCE: java.lang.IllegalStateException]
+	at example.Work.run(Work.java:27)
+ERROR standalone message
+INFO done

@@ -1,0 +1,29 @@
+plugins {
+    id 'java-library'
+}
+
+tasks.register('regressionTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'local.javatrace.core.RecognizerRegression'
+}
+
+tasks.named('test') {
+    // 回归程序只使用 JDK 和自带断言，因此由 regressionTest 执行。
+    dependsOn regressionTest
+    enabled = false
+}
+
+tasks.register('runtimeCorpusRegression', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'local.javatrace.core.RuntimeCorpusRegression'
+    args 'development'
+}
+tasks.register('runtimeCorpusAcceptance', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'local.javatrace.core.RuntimeCorpusRegression'
+    args 'acceptance'
+}
+tasks.named('check') { dependsOn runtimeCorpusRegression, runtimeCorpusAcceptance }

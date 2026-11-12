@@ -1,0 +1,40 @@
+<idea-plugin>
+    <id>local.javatrace.console-probe</id>
+    <name>Java Trace Console Probe</name>
+    <vendor>Java Trace</vendor>
+    <description>Preview Java exceptions, explicitly ask DeepSeek for explanations, and save records inside the source project. API keys use IDEA PasswordSafe.</description>
+    <depends>com.intellij.modules.platform</depends>
+    <extensions defaultExtensionNs="com.intellij">
+        <uiDataRule implementation="local.javatrace.idea.ConsolePopupData"/>
+        <fileType name="Java Trace Issue" implementationClass="local.javatrace.idea.IssueFileType"
+                  fieldName="INSTANCE" extensions="jti"/>
+        <fileEditorProvider implementation="local.javatrace.idea.IssueFileEditorProvider"/>
+    </extensions>
+    <actions>
+        <action id="local.javatrace.OpenIssues"
+                class="local.javatrace.idea.OpenIssuesAction"
+                text="项目问题记录"
+                description="Read and search project exception records and AI explanations">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+            <add-to-group group-id="ConsoleView.PopupMenu" anchor="last"/>
+        </action>
+        <action id="local.javatrace.ProbeTrace"
+                class="local.javatrace.idea.ProbeTraceAction"
+                text="预览 Java 异常"
+                description="Preview and copy the Java exception at the console context-menu location">
+            <add-to-group group-id="ConsoleView.PopupMenu" anchor="first"/>
+        </action>
+        <action id="local.javatrace.ProbeAllTraces"
+                class="local.javatrace.idea.ProbeAllTracesAction"
+                text="预览全部 Java 异常"
+                description="Preview and copy detected Java exceptions in the current console output">
+            <add-to-group group-id="ConsoleView.PopupMenu" anchor="after" relative-to-action="local.javatrace.ProbeTrace"/>
+        </action>
+        <action id="local.javatrace.PreviewSelection"
+                class="local.javatrace.idea.PreviewSelectionAction"
+                text="手动预览所选文本"
+                description="Select console text first; preview, adjust and copy it without automatic exception recognition">
+            <add-to-group group-id="ConsoleView.PopupMenu" anchor="after" relative-to-action="local.javatrace.ProbeAllTraces"/>
+        </action>
+    </actions>
+</idea-plugin>

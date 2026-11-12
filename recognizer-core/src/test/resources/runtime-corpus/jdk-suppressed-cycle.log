@@ -1,0 +1,7 @@
+ERROR corpus - synthetic request
+java.lang.IllegalStateException: root
+	at example.Corpus.run(Corpus.java:42)
+	Suppressed: java.lang.IllegalStateException: suppressed
+		... 1 more
+		Suppressed: [CIRCULAR REFERENCE: java.lang.IllegalStateException: root]
+INFO corpus - finished

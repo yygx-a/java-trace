@@ -1,0 +1,7 @@
+java.lang.IllegalStateException: synthetic 中文 🧩
+	at example.Corpus.run(Corpus.java:42)
+Caused by: java.lang.IllegalStateException: cause
+	... 1 more
+java.lang.IllegalStateException: second
+	at example.Corpus.run(Corpus.java:42)
+INFO corpus - finished

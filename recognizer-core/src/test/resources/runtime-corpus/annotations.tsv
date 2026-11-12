@@ -1,0 +1,21 @@
+# split	id	ranges UTF-16 half-open	status per range	warnings per range	notes per range	contexts per range
+development	jdk-cause	33:183	FOUND	-	-	0:33
+development	jdk-cause-cycle	33:245	FOUND	-	-	0:33
+development	jdk-suppressed-cycle	33:254	FOUND	-	-	0:33
+development	jdk-stackless-wrapper	33:247	FOUND	-	BRANCH_WITHOUT_FRAMES	0:33
+development	jdk-stackless-cause	33:172	FOUND	-	BRANCH_WITHOUT_FRAMES	0:33
+development	jdk-header-only	33:78	UNCERTAIN	MISSING_STACK	-	0:33
+development	frame-fragment	0:39	UNCERTAIN	MISSING_HEADER	-	-
+development	unknown-message	33:74;96:135	UNCERTAIN;UNCERTAIN	MISSING_STACK,AMBIGUOUS_BOUNDARY;MISSING_HEADER	-;-	0:33;-
+development	adjacent-independent	0:150;150:229	FOUND;FOUND	-;-	-;-	-;-
+development	logback-basic	74:241	FOUND	-	-	0:74
+development	logback-packaging	65:241	FOUND	-	-	0:65
+development	log4j-extended	74:231	FOUND	-	-	0:74
+acceptance	nested-suppressed-causes	33:617	FOUND	-	BRANCH_WITHOUT_FRAMES	0:33
+acceptance	jdk-modules	33:199	FOUND	-	-	0:33
+acceptance	stackless-suppressed	33:313	FOUND	-	BRANCH_WITHOUT_FRAMES	0:33
+acceptance	logback-time-only	63:693	FOUND	-	BRANCH_WITHOUT_FRAMES	0:63
+acceptance	log4j-level-first	50:742	FOUND	-	BRANCH_WITHOUT_FRAMES	0:50
+acceptance	duplicate-events	33:183;183:333	FOUND;FOUND	-;-	-;-	0:33;-
+acceptance	negative-ordinary	-	-	-	-	-
+acceptance	broken-frame	33:74	UNCERTAIN	MISSING_STACK,AMBIGUOUS_BOUNDARY	-	0:33

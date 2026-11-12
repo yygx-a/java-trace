@@ -1,0 +1,4 @@
+ERROR corpus - synthetic request
+java.lang.IllegalStateException: partial
+	at example.Corpus.run(Corpus.java:42) extra
+INFO corpus - finished

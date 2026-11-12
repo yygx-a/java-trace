@@ -1,0 +1,5 @@
+ERROR corpus - synthetic request
+java.lang.IllegalStateException: root
+	at example.Corpus.run(Corpus.java:42)
+Caused by: RuntimeCorpusGenerator$QuietException: quiet cause
+INFO corpus - finished
