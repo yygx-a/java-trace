@@ -98,7 +98,8 @@ final class TraceAssembler {
             boolean looseTitle = next == Kind.TITLE
                     && (cursor + 1 == lines.size() || !isContinuation(lines.get(cursor + 1).kind()));
             if (looseTitle || next == Kind.OTHER || next == Kind.BROKEN_TRACE
-                    || next == Kind.MYBATIS_DETAIL || next == Kind.MYSQL_DETAIL || isContinuation(next)) {
+                    || next == Kind.MYBATIS_DETAIL || next == Kind.MYSQL_DETAIL
+                    || next == Kind.SPRING_SQL_GRAMMAR_SUFFIX || isContinuation(next)) {
                 trace.warnings.add(Warning.AMBIGUOUS_BOUNDARY);
             }
         }
@@ -202,19 +203,34 @@ final class TraceAssembler {
             Branch active = branches.peek();
             if (active.hasFrames || active.hasSuppressed || active.circular
                     || (active.messageFormat == MessageFormat.NONE && !eventBounded)) return first;
-            Kind detail = active.messageFormat == MessageFormat.MYBATIS ? Kind.MYBATIS_DETAIL : Kind.MYSQL_DETAIL;
+            Kind detail = switch (active.messageFormat) {
+                case MYBATIS, MYBATIS_SPRING_SQL_GRAMMAR -> Kind.MYBATIS_DETAIL;
+                case NONE, MYSQL -> Kind.MYSQL_DETAIL;
+            };
             boolean hasDetail = false;
+            boolean hasKnownDetail = false;
+            boolean expectFrame = false;
             for (int index = first; index < Math.min(lines.size(), first + 256); index++) {
                 Classified line = lines.get(index);
                 if (!prefix.equals(line.prefix())) return first;
                 if (line.kind() == Kind.FRAME) {
                     return hasDetail && active.acceptsFrame(line.indent()) ? index : first;
                 }
+                if (expectFrame) return first;
+                boolean sameIndent = line.indent() == active.indent;
+                if (active.messageFormat == MessageFormat.MYBATIS_SPRING_SQL_GRAMMAR && hasKnownDetail
+                        && sameIndent && line.kind() == Kind.SPRING_SQL_GRAMMAR_SUFFIX) {
+                    // 摘要是 MyBatis 诊断的最后一行，下一行必须是同分支的合法首帧。
+                    expectFrame = true;
+                    continue;
+                }
+                boolean known = line.kind() == detail && sameIndent;
                 boolean generic = eventBounded && (line.kind() == Kind.OTHER
+                        || line.kind() == Kind.SPRING_SQL_GRAMMAR_SUFFIX
                         || (line.kind() == Kind.LOG || line.kind() == Kind.ERROR_LOG) && !prefix.isEmpty());
-                if (line.kind() != Kind.BLANK && !generic
-                        && (line.kind() != detail || line.indent() != active.indent)) return first;
-                hasDetail |= line.kind() == detail || generic;
+                if (line.kind() != Kind.BLANK && !generic && !known) return first;
+                hasKnownDetail |= known;
+                hasDetail |= known || generic;
             }
             return first;
         }

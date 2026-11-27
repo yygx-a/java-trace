@@ -15,11 +15,11 @@ final class LineClassifier {
     // BROKEN_TRACE 表示开头像堆栈结构但整行不符合当前规则。
     enum Kind {
         TITLE, THREAD_TITLE, LIKELY_TITLE, FRAME, CAUSE, SUPPRESSED, ELISION, CIRCULAR_CAUSE, CIRCULAR_SUPPRESSED,
-        ERROR_LOG, LOG, BLANK, SEPARATOR, MYBATIS_DETAIL, MYSQL_DETAIL, BROKEN_TRACE, OTHER
+        ERROR_LOG, LOG, BLANK, SEPARATOR, MYBATIS_DETAIL, MYSQL_DETAIL, SPRING_SQL_GRAMMAR_SUFFIX, BROKEN_TRACE, OTHER
     }
 
     // 不是异常类型清单，而是“后续消息行是否有已支持的特殊格式”。
-    enum MessageFormat { NONE, MYBATIS, MYSQL }
+    enum MessageFormat { NONE, MYBATIS, MYSQL, MYBATIS_SPRING_SQL_GRAMMAR }
 
     // kind 是行标签；indent 是展开制表符后的缩进列数；messageFormat 是多行消息提示。
     record Classified(Kind kind, int indent, MessageFormat messageFormat, String prefix, boolean eventBounded,
@@ -50,6 +50,13 @@ final class LineClassifier {
     private static final Pattern SUPPRESSED = Pattern.compile("Suppressed: " + THROWABLE);
     private static final Pattern CIRCULAR_CAUSE = Pattern.compile("Caused by: \\[CIRCULAR REFERENCE: " + THROWABLE + "\\]");
     private static final Pattern CIRCULAR_SUPPRESSED = Pattern.compile("Suppressed: \\[CIRCULAR REFERENCE: " + THROWABLE + "\\]");
+
+    // MyBatis-Spring 将原诊断作为 task 传入 SQL 翻译器，并在 Spring 追加摘要前换行。
+    private static final Pattern SPRING_SQL_GRAMMAR_TITLE = Pattern.compile(
+            "(?:Exception in thread \"[^\"\\r\\n]*+\" |Caused by: |Suppressed: )?"
+                    + "org\\.springframework\\.jdbc\\.BadSqlGrammarException:.*");
+    private static final Pattern SPRING_SQL_GRAMMAR_SUFFIX = Pattern.compile(
+            "; bad SQL grammar \\[\\](?:; nested exception is " + THROWABLE + ")?");
 
     // ===== 区域 4：调用帧、框架附加信息和省略帧 =====
     // 识别 at example.Service.load(Service.java:42)，不是在句子里找到一个 at 就算调用帧。
@@ -110,6 +117,7 @@ final class LineClassifier {
     private static MessageFormat messageFormat(Kind kind, String content) {
         if (kind != Kind.TITLE && kind != Kind.LIKELY_TITLE && kind != Kind.THREAD_TITLE
                 && kind != Kind.CAUSE && kind != Kind.SUPPRESSED) return MessageFormat.NONE;
+        if (SPRING_SQL_GRAMMAR_TITLE.matcher(content).matches()) return MessageFormat.MYBATIS_SPRING_SQL_GRAMMAR;
         // 包装异常（如 ExecutionException）会把被包装类型放进同一标题行。
         if (content.contains("org.mybatis.spring.MyBatisSystemException:")
                 || content.contains("org.apache.ibatis.exceptions.PersistenceException:")) return MessageFormat.MYBATIS;
@@ -148,6 +156,9 @@ final class LineClassifier {
         // 8.1 已支持的数据库消息行：只赋予诊断标签，不在这里把它们并入异常主体。
         if (content.startsWith("### Error ") || content.startsWith("### The error ")
                 || content.startsWith("### SQL:") || content.startsWith("### Cause:")) return Kind.MYBATIS_DETAIL;
+        if (content.startsWith("; bad SQL grammar ") && SPRING_SQL_GRAMMAR_SUFFIX.matcher(content).matches()) {
+            return Kind.SPRING_SQL_GRAMMAR_SUFFIX;
+        }
         if (content.startsWith("The last packet sent successfully to the server was ")
                 || content.startsWith("The last packet successfully received from the server was ")) return Kind.MYSQL_DETAIL;
         // 8.2 像堆栈但未通过完整语法校验：让组合器停下来提示，避免吞掉损坏内容。

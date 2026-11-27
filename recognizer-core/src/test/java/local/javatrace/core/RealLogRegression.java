@@ -2,6 +2,7 @@ package local.javatrace.core;
 
 import java.util.List;
 import java.util.Objects;
+import local.javatrace.core.RecognitionResult.Reason;
 import local.javatrace.core.RecognitionResult.Status;
 import local.javatrace.core.RecognitionResult.Warning;
 
@@ -48,8 +49,64 @@ final class RealLogRegression {
 
     static int run() {
         logHeaders();
+        springSqlGrammar();
         boundaries();
         return assertions;
+    }
+
+    private static void springSqlGrammar() {
+        String title = "org.springframework.jdbc.BadSqlGrammarException: \n";
+        String details = """
+                ### Error querying database. Cause: java.sql.SQLSyntaxErrorException: 合成错误 🧩
+                ### The error may involve example.SampleMapper.select
+                ### The error occurred while executing a query
+                ### SQL: SELECT name FROM example_table
+                ### Cause: java.sql.SQLSyntaxErrorException: 合成错误 🧩
+                """;
+        String suffix = "; bad SQL grammar []; nested exception is java.sql.SQLSyntaxErrorException: 合成错误 🧩\n";
+        String frames = """
+                \tat org.springframework.jdbc.support.SQLErrorCodeSQLExceptionTranslator.doTranslate(SQLErrorCodeSQLExceptionTranslator.java:239) ~[spring-jdbc-5.3.27.jar:5.3.27]
+                \tat org.mybatis.spring.MyBatisExceptionTranslator.translateExceptionIfPossible(MyBatisExceptionTranslator.java:91) ~[mybatis-spring-2.0.6.jar:2.0.6]
+                Caused by: java.sql.SQLSyntaxErrorException: 合成错误 🧩
+                \tat com.mysql.cj.jdbc.exceptions.SQLError.createSQLException(SQLError.java:120) ~[mysql-connector-java-8.0.22.jar:8.0.22]
+                \t... 1 common frames omitted
+                """;
+        String context = "2026-11-27 10:20:30.123 [worker] ERROR example.App - synthetic query failed\n";
+        String unrelated = "INFO after both errors\n";
+        for (String newline : List.of("\n", "\r\n")) {
+            String before = context.replace("\n", newline);
+            String body = (title + details + suffix + frames).replace("\n", newline);
+            String independent = NPE.replace("\n", newline);
+            String text = before + body + independent + unrelated.replace("\n", newline);
+            TextRange range = new TextRange(before.length(), before.length() + body.length());
+            var batch = RECOGNIZER.recognizeAll(text, false, false).exceptions();
+            equal(2, batch.size(), "one Spring SQL grammar chain and one independent exception");
+            var result = batch.getFirst();
+            equal(Status.FOUND, result.status(), "complete Spring SQL grammar chain");
+            equal(range, result.exceptionRange().orElseThrow(), "all SQL diagnostics, frames and cause in one original range");
+            equal(before, slice(text, result.contextRange().orElseThrow()), "previous ERROR remains separate");
+            equal(independent, slice(text, batch.getLast().exceptionRange().orElseThrow()), "independent exception preserved");
+            equal(true, result.reasons().containsAll(List.of(Reason.MULTILINE_MESSAGE, Reason.CAUSE, Reason.ELIDED_FRAMES)),
+                    "diagnostic, cause and elision evidence preserved");
+            for (int anchor = range.startOffset(); anchor < range.endOffset(); anchor = text.indexOf('\n', anchor) + 1) {
+                equal(result, RECOGNIZER.recognize(text, anchor), "each diagnostic and stack line selects the complete chain");
+            }
+            equal(result, RECOGNIZER.recognize(text, text.indexOf("🧩") + 1), "original UTF-16 anchor inside the diagnostic");
+        }
+        String body = title + details + suffix + frames;
+        equal(new TextRange(0, body.length()), RECOGNIZER.recognize(body, 0).exceptionRange().orElseThrow(),
+                "known Spring/MyBatis grammar does not require a timestamped log header");
+        for (String rest : List.of(suffix + frames, details + suffix + unrelated + frames,
+                details + "unexpected message\n" + suffix + frames, details + suffix + NPE,
+                details + "  " + suffix + frames, details + suffix + details + frames,
+                details.repeat(53) + suffix + frames)) {
+            var result = RECOGNIZER.recognize(title + rest, 0);
+            equal(Status.UNCERTAIN, result.status(), "unconfirmed SQL diagnostics stay uncertain");
+            equal(new TextRange(0, title.length()), result.exceptionRange().orElseThrow(), "no merge without supported diagnostics and a nearby frame");
+        }
+        String otherTitle = "java.lang.IllegalStateException: mentioned " + title;
+        var other = RECOGNIZER.recognize(otherTitle + details + suffix + frames, 0);
+        equal(new TextRange(0, otherTitle.length()), other.exceptionRange().orElseThrow(), "mentioning the Spring type does not establish ownership");
     }
 
     private static void logHeaders() {
