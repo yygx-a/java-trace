@@ -11,6 +11,8 @@ idea-plugin ──> recognizer-core
 - `idea-plugin`：捕获右键位置和快照，后台解析；界面线程管理窗口及源高亮。固定快照与源位置拥有不同生命周期，新输出只解绑位置；窗口/项目关闭释放资源。手动选区明确标注未识别。
 - `issue-store`：纯JDK本地文件记录，临时文件/原子替换、跨进程锁与版本冲突保护。支持旧JTI1和含可选AI数据的JTI2。
 
+异常预览和 AI 解答都可以最小化。最小化保留预览快照、勾选和阅读状态。真正关闭从预览打开的解答窗口时，插件通过同一预览实例关闭来源窗口并清理其高亮。从项目记录列表独立打开的窗口有自己的生命周期。
+
 ## 识别入口
 
 `JavaExceptionRecognizer.recognize(String originalText, int anchorOffset)` 识别锚点所属异常；带两个截断标志的重载报告快照缺失。`recognizeAll(String originalText, boolean startTruncated, boolean endTruncated)` 按顺序保留全部候选与重复事件。

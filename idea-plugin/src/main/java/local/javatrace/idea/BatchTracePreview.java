@@ -26,7 +26,7 @@ import java.util.function.BooleanSupplier;
 
 /** 勾选同时决定下方原文、控制台高亮和复制范围。 */
 final class BatchTracePreview implements ConsolePreview {
-    private final JDialog dialog;
+    private final JFrame frame;
     private final String snapshot;
     private final List<RecognitionResult> exceptions;
     private final List<RecognitionResult.Warning> snapshotWarnings;
@@ -65,9 +65,10 @@ final class BatchTracePreview implements ConsolePreview {
         table = new JTable(model);
 
         Frame owner = WindowManager.getInstance().getFrame(project);
-        dialog = new JDialog(owner, "全部 Java 异常预览", false);
-        dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
-        dialog.addWindowListener(new WindowAdapter() {
+        frame = new JFrame("全部 Java 异常预览 · " + project.getName());
+        if (owner != null) frame.setIconImages(owner.getIconImages());
+        frame.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+        frame.addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosed(WindowEvent event) {
                 onClose.run();
@@ -110,14 +111,10 @@ final class BatchTracePreview implements ConsolePreview {
         buttons.add(context);
         save.addActionListener(event -> {
             if (!current.getAsBoolean()) return;
-            List<Issue.Segment> segments = new ArrayList<>();
-            for (int i = 0; i < checked.length; i++) if (checked[i]) {
-                RecognitionResult item = exceptions.get(i);
-                segments.add(PreviewEvidence.segment(snapshot, item.exceptionRange().orElseThrow(), item, context.isSelected(), snapshotWarnings));
-            }
+            List<Issue.Segment> segments = selectedSegments();
             if (!segments.isEmpty()) {
-                List<Issue.Segment> stable = List.copyOf(segments);
-                project.getService(IssueRecords.class).explainPreview(saveTokens.computeIfAbsent(stable, key -> UUID.randomUUID()), stable);
+                project.getService(IssueRecords.class)
+                        .explainPreview(saveTokens.computeIfAbsent(segments, key -> UUID.randomUUID()), segments, frame);
             }
         });
         buttons.add(save);
@@ -126,24 +123,24 @@ final class BatchTracePreview implements ConsolePreview {
             if (!current.getAsBoolean()) return;
             List<Issue.Segment> stable = selectedSegments();
             if (!stable.isEmpty()) project.getService(IssueRecords.class)
-                    .savePreview(saveTokens.computeIfAbsent(stable, key -> UUID.randomUUID()), stable);
+                    .savePreview(saveTokens.computeIfAbsent(stable, key -> UUID.randomUUID()), stable, frame);
         });
         buttons.add(localSave);
         JPanel notices = new JPanel(new java.awt.GridLayout(0, 1));
         notices.add(status); notices.add(source);
-        dialog.add(notices, BorderLayout.NORTH);
-        dialog.add(split, BorderLayout.CENTER);
-        dialog.add(buttons, BorderLayout.SOUTH);
-        dialog.setSize(850, 540);
-        dialog.setLocationRelativeTo(owner);
+        frame.add(notices, BorderLayout.NORTH);
+        frame.add(split, BorderLayout.CENTER);
+        frame.add(buttons, BorderLayout.SOUTH);
+        frame.setSize(850, 540);
+        frame.setLocationRelativeTo(owner);
         refreshPreview();
     }
 
     @Override
-    public void open() { dialog.setVisible(true); }
+    public void open() { frame.setVisible(true); }
 
     @Override
-    public void close() { dialog.dispose(); }
+    public void close() { frame.dispose(); }
 
     @Override
     public void sourceDetached(String message) {

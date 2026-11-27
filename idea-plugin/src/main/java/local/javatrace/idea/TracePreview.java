@@ -22,7 +22,7 @@ import local.javatrace.store.Issue;
 /** 非模态预览始终引用识别时的原文，调整操作以物理行为单位。 */
 final class TracePreview implements ConsolePreview {
     private final String snapshot;
-    private final JDialog dialog;
+    private final JFrame frame;
     private final JTextArea text = new JTextArea();
     private final JLabel status = new JLabel();
     private final JButton copy = new JButton("复制");
@@ -48,9 +48,11 @@ final class TracePreview implements ConsolePreview {
         this.end = end;
         this.onRange = onRange;
         this.current = current;
-        dialog = new JDialog(WindowManager.getInstance().getFrame(project), "Java 异常预览", false);
-        dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
-        dialog.addWindowListener(new WindowAdapter() {
+        Frame owner = WindowManager.getInstance().getFrame(project);
+        frame = new JFrame("Java 异常预览 · " + project.getName());
+        if (owner != null) frame.setIconImages(owner.getIconImages());
+        frame.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+        frame.addWindowListener(new WindowAdapter() {
             @Override public void windowClosed(WindowEvent event) { onClose.run(); }
         });
         status.setText(description);
@@ -85,7 +87,8 @@ final class TracePreview implements ConsolePreview {
             if (!current.getAsBoolean()) return;
             List<Issue.Segment> segments = List.of(PreviewEvidence.segment(snapshot,
                     new TextRange(this.start, this.end), recognition, context.isSelected()));
-            project.getService(IssueRecords.class).explainPreview(saveTokens.computeIfAbsent(segments, key -> UUID.randomUUID()), segments);
+            project.getService(IssueRecords.class)
+                    .explainPreview(saveTokens.computeIfAbsent(segments, key -> UUID.randomUUID()), segments, frame);
         });
         buttons.add(save);
         localSave.setToolTipText("打开本地记录草稿，保留当前调整范围和已勾选上下文。");
@@ -93,27 +96,28 @@ final class TracePreview implements ConsolePreview {
             if (!current.getAsBoolean()) return;
             List<Issue.Segment> segments = List.of(PreviewEvidence.segment(snapshot,
                     new TextRange(this.start, this.end), recognition, context.isSelected()));
-            project.getService(IssueRecords.class).savePreview(saveTokens.computeIfAbsent(segments, key -> UUID.randomUUID()), segments);
+            project.getService(IssueRecords.class)
+                    .savePreview(saveTokens.computeIfAbsent(segments, key -> UUID.randomUUID()), segments, frame);
         });
         buttons.add(localSave);
         JPanel notices = new JPanel(new java.awt.GridLayout(0, 1));
         notices.add(status); notices.add(source);
-        dialog.add(notices, BorderLayout.NORTH);
+        frame.add(notices, BorderLayout.NORTH);
         JPanel evidence = new JPanel(new BorderLayout());
         evidence.add(contextPreview, BorderLayout.NORTH);
         evidence.add(new JScrollPane(text), BorderLayout.CENTER);
-        dialog.add(evidence, BorderLayout.CENTER);
-        dialog.add(buttons, BorderLayout.SOUTH);
-        dialog.setSize(1000, 480);
-        dialog.setLocationRelativeTo(WindowManager.getInstance().getFrame(project));
+        frame.add(evidence, BorderLayout.CENTER);
+        frame.add(buttons, BorderLayout.SOUTH);
+        frame.setSize(1000, 480);
+        frame.setLocationRelativeTo(owner);
         refresh();
     }
 
     @Override
-    public void open() { dialog.setVisible(true); }
+    public void open() { frame.setVisible(true); }
 
     @Override
-    public void close() { dialog.dispose(); }
+    public void close() { frame.dispose(); }
 
     @Override
     public void sourceDetached(String message) {

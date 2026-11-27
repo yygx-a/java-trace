@@ -13,6 +13,7 @@ import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.IOException;
+import java.lang.ref.WeakReference;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.time.ZoneId;
@@ -30,7 +31,7 @@ public final class IssueRecords implements Disposable {
     private final String projectName;
     private final String basePath;
     private final IssueStore legacyStore = new IssueStore(Path.of(System.getProperty("user.home"), ".java-trace", "issues"));
-    private final Set<JDialog> dialogs = new HashSet<>();
+    private final Set<Window> windows = new HashSet<>();
     private final Map<String, AnalysisWindow> editors = new HashMap<>();
     private JDialog browser;
 
@@ -40,25 +41,31 @@ public final class IssueRecords implements Disposable {
     private IssueStore projectStore() throws IOException { return new IssueStore(ProjectIssueLocation.resolve(basePath)); }
     private String projectLocation() { return basePath == null ? "项目目录未确定" : Path.of(basePath, ".java-trace", "issues").toString(); }
 
-    void explainPreview(UUID token, List<Issue.Segment> segments) {
-        openPreview(token, segments, true);
+    void explainPreview(UUID token, List<Issue.Segment> segments, Window sourcePreview) {
+        openPreview(token, segments, sourcePreview, true);
     }
 
-    void savePreview(UUID token, List<Issue.Segment> segments) {
-        openPreview(token, segments, false);
+    void savePreview(UUID token, List<Issue.Segment> segments, Window sourcePreview) {
+        openPreview(token, segments, sourcePreview, false);
     }
 
-    private void openPreview(UUID token, List<Issue.Segment> segments, boolean askAI) {
+    private void openPreview(UUID token, List<Issue.Segment> segments, Window sourcePreview, boolean askAI) {
         if (segments.isEmpty() || segments.size() > Issue.MAX_SEGMENTS) {
             JOptionPane.showMessageDialog(WindowManager.getInstance().getFrame(project),
                     "请勾选 1 至 " + Issue.MAX_SEGMENTS + " 段异常。", "询问 AI", JOptionPane.INFORMATION_MESSAGE); return;
         }
         String key = "project:" + token;
-        if (editors.containsKey(key)) { editors.get(key).dialog.toFront(); return; }
+        AnalysisWindow existing = editors.get(key);
+        if (existing != null) {
+            existing.linkPreview(sourcePreview);
+            existing.activate();
+            return;
+        }
         AnalysisWindow editor = new AnalysisWindow(key, token, segments, null, false);
+        editor.linkPreview(sourcePreview);
         editor.open(); editor.saving = true; editor.refreshButtons();
         editor.status.setText("正在检查此预览是否已有项目记录…");
-        background(editor.dialog, () -> {
+        background(editor.frame, () -> {
             IssueStore store = projectStore();
             try { return Optional.of(store.read(token)); }
             catch (NoSuchFileException absent) { return Optional.<Issue>empty(); }
@@ -114,7 +121,8 @@ public final class IssueRecords implements Disposable {
             boolean legacy = displayedLegacy[0];
             background(dialog, () -> (legacy ? legacyStore : projectStore()).read(selected.id()), issue -> {
                 String key = (legacy ? "legacy:" : "project:") + issue.id();
-                if (editors.containsKey(key)) editors.get(key).dialog.toFront();
+                AnalysisWindow existing = editors.get(key);
+                if (existing != null) existing.activate();
                 else new AnalysisWindow(key, issue.id(), issue.segments(), issue, legacy).open();
             }, status::setText);
         });
@@ -136,12 +144,13 @@ public final class IssueRecords implements Disposable {
         private final UUID id;
         private final List<Issue.Segment> segments;
         private final boolean legacy;
-        private final JDialog dialog;
+        private final JFrame frame;
         private final IssueReadingPanel reading = new IssueReadingPanel();
         private final JLabel status = label("尚未保存。");
         private final JButton ask = new JButton("询问 AI"), cancel = new JButton("取消请求"),
                 credentials = new JButton("API 设置"), save = new JButton("保存记录"), reload = new JButton("重新读取");
         private Issue saved;
+        private WeakReference<Window> sourcePreview = new WeakReference<>(null);
         private Optional<Issue.Analysis> analysis = Optional.empty();
         private Future<?> request;
         private boolean saving, requesting, dirty;
@@ -149,7 +158,9 @@ public final class IssueRecords implements Disposable {
 
         AnalysisWindow(String editorKey, UUID id, List<Issue.Segment> segments, Issue saved, boolean legacy) {
             this.id = id; this.segments = List.copyOf(segments); this.saved = saved; this.legacy = legacy;
-            dialog = window(legacy ? "旧版问题记录（只读）" : "报错与 AI 解释"); editors.put(editorKey, this);
+            frame = new JFrame((legacy ? "旧版问题记录（只读）" : "报错与 AI 解释") + " · " + projectName);
+            track(frame);
+            editors.put(editorKey, this);
             JPanel metadata = new JPanel(new BorderLayout(16, 8));
             metadata.setBorder(BorderFactory.createEmptyBorder(16, 22, 12, 22));
             JPanel heading = new JPanel(new GridLayout(0, 1, 0, 6));
@@ -165,7 +176,7 @@ public final class IssueRecords implements Disposable {
                         + (this.saved == null ? "\n尚未保存" : "\n创建：" + TIME.format(this.saved.createdAt()) + "\n更新：" + TIME.format(this.saved.updatedAt()) + "\n版本：" + this.saved.revision())
                         + analysis.map(ai -> "\nAI：" + ai.provider() + " · " + ai.model() + "\n回答时间：" + TIME.format(ai.answeredAt())).orElse("")
                         + (legacy ? "\n旧版本机记录，只读。" : "\n仅点击询问时，将本次所选报错和已勾选上下文发送给 DeepSeek。"));
-                detail.setCaretPosition(0); JOptionPane.showMessageDialog(dialog, new JScrollPane(detail), "记录详情", JOptionPane.PLAIN_MESSAGE);
+                detail.setCaretPosition(0); JOptionPane.showMessageDialog(frame, new JScrollPane(detail), "记录详情", JOptionPane.PLAIN_MESSAGE);
             });
             links.add(browse); links.add(details); metadata.add(links, BorderLayout.EAST);
             ask.setToolTipText("将这些报错及主动附带的上下文发送给 DeepSeek；不会发送源码或其他记录。");
@@ -174,25 +185,37 @@ public final class IssueRecords implements Disposable {
             ask.addActionListener(e -> ask()); cancel.addActionListener(e -> cancelRequest()); credentials.addActionListener(e -> configureKey(null));
             save.addActionListener(e -> persist());
             reload.addActionListener(e -> {
-                if (dirty && JOptionPane.showConfirmDialog(dialog, "重新读取会替换当前未保存的 AI 回答，继续？", "重新读取", JOptionPane.OK_CANCEL_OPTION) != JOptionPane.OK_OPTION) return;
+                if (dirty && JOptionPane.showConfirmDialog(frame, "重新读取会替换当前未保存的 AI 回答，继续？", "重新读取", JOptionPane.OK_CANCEL_OPTION) != JOptionPane.OK_OPTION) return;
                 saving = true; refreshButtons();
-                background(dialog, () -> (legacy ? legacyStore : projectStore()).read(id), issue -> {
+                background(frame, () -> (legacy ? legacyStore : projectStore()).read(id), issue -> {
                     load(issue); saving = false; refreshButtons();
                 }, error -> { status.setText(error); saving = false; refreshButtons(); });
             });
-            dialog.setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
-            dialog.addWindowListener(new WindowAdapter() {
+            frame.setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
+            frame.addWindowListener(new WindowAdapter() {
                 @Override public void windowClosing(WindowEvent event) {
                     if (saving) return;
-                    if (dirty && JOptionPane.showConfirmDialog(dialog, "AI 回答尚未保存，关闭此窗口？", "关闭记录", JOptionPane.OK_CANCEL_OPTION) != JOptionPane.OK_OPTION) return;
-                    cancelRequest(); dialog.dispose();
+                    if (dirty && JOptionPane.showConfirmDialog(frame, "AI 回答尚未保存，关闭此窗口？", "关闭记录", JOptionPane.OK_CANCEL_OPTION) != JOptionPane.OK_OPTION) return;
+                    cancelRequest(); frame.dispose();
                 }
-                @Override public void windowClosed(WindowEvent event) { cancelRequest(); }
+                @Override public void windowClosed(WindowEvent event) {
+                    cancelRequest();
+                    Window preview = sourcePreview.get();
+                    sourcePreview.clear();
+                    if (preview != null && preview.isDisplayable()) preview.dispose();
+                }
             });
-            dialog.add(metadata, BorderLayout.NORTH); dialog.add(reading, BorderLayout.CENTER); dialog.add(buttons, BorderLayout.SOUTH);
+            frame.add(metadata, BorderLayout.NORTH); frame.add(reading, BorderLayout.CENTER); frame.add(buttons, BorderLayout.SOUTH);
             if (saved != null) load(saved); else displayAnalysis(); refreshButtons();
         }
-        void open() { show(dialog, 1060, 820); }
+        void open() { show(frame, 1060, 820); }
+        void linkPreview(Window preview) {
+            sourcePreview = new WeakReference<>(preview);
+        }
+        void activate() {
+            frame.setExtendedState(frame.getExtendedState() & ~Frame.ICONIFIED);
+            frame.toFront();
+        }
         private void load(Issue issue) {
             saved = issue; analysis = issue.analysis(); dirty = false; displayAnalysis();
             status.setText("已保存  ·  " + TIME.format(issue.updatedAt()) + "  ·  版本 " + issue.revision());
@@ -210,7 +233,7 @@ public final class IssueRecords implements Disposable {
             if (legacy || saving || requesting) return;
             try { DeepSeekClient.question(segments); } catch (IOException error) { status.setText(error.getMessage()); return; }
             requesting = true; long attempt = ++generation; refreshButtons(); status.setText("正在读取已配置的 API Key…");
-            request = background(dialog, () -> {
+            request = background(frame, () -> {
                 try { return Optional.ofNullable(DeepSeekCredentials.load()).filter(key -> !key.isBlank()); }
                 catch (RuntimeException error) { throw new IOException("无法读取 IDEA 凭据库，请检查 IDEA 的 Passwords 设置。"); }
             }, key -> {
@@ -221,7 +244,7 @@ public final class IssueRecords implements Disposable {
         }
         private void send(String key, long attempt) {
             status.setText("正在向 DeepSeek 询问 " + segments.size() + " 段报错，可取消；不会自动重试…");
-            request = background(dialog, () -> new DeepSeekClient().explain(key, segments), result -> {
+            request = background(frame, () -> new DeepSeekClient().explain(key, segments), result -> {
                 if (attempt != generation) return;
                 analysis = Optional.of(result); dirty = true; requesting = false; displayAnalysis();
                 status.setText("AI 解释已返回，尚未保存。请核对内容后点击保存记录。"); refreshButtons();
@@ -235,7 +258,7 @@ public final class IssueRecords implements Disposable {
         private void configureKey(Runnable after) {
             if (saving || requesting) return;
             saving = true; refreshButtons(); status.setText("正在检查 IDEA 凭据库是否可持久保存…");
-            background(dialog, () -> {
+            background(frame, () -> {
                 try { return Optional.ofNullable(DeepSeekCredentials.load()).filter(key -> !key.isBlank()).isPresent(); }
                 catch (RuntimeException error) { throw new IOException("无法打开 IDEA 凭据库，请检查 Passwords 中的 KeePass 配置；未发送请求。"); }
             }, configured -> {
@@ -243,27 +266,27 @@ public final class IssueRecords implements Disposable {
                 if (!configured) { showKeyDialog(after); return; }
                 status.setText("API Key 已配置，凭据库处于持久保存模式，无需重新输入。");
                 if (after != null) { after.run(); return; }
-                int option = JOptionPane.showOptionDialog(dialog,
+                int option = JOptionPane.showOptionDialog(frame,
                         "已从 IDEA 凭据库读到 DeepSeek Key，当前为持久保存模式。\n可以直接询问 AI，无需重新输入。",
                         "API 设置", JOptionPane.DEFAULT_OPTION, JOptionPane.INFORMATION_MESSAGE, null,
                         new Object[]{"完成", "更换 API Key"}, "完成");
                 if (option == 1) showKeyDialog(null);
             }, error -> {
                 saving = false; status.setText(error); refreshButtons();
-                JOptionPane.showMessageDialog(dialog, error, "凭据库尚未就绪", JOptionPane.INFORMATION_MESSAGE);
+                JOptionPane.showMessageDialog(frame, error, "凭据库尚未就绪", JOptionPane.INFORMATION_MESSAGE);
             });
         }
         private void showKeyDialog(Runnable after) {
             JPasswordField field = new JPasswordField(36); JPanel panel = new JPanel(new GridLayout(0, 1));
             panel.add(label("输入 DeepSeek API Key，仅由 IDEA 凭据库保存，其他项目可复用。"));
             panel.add(field); panel.add(label("只用于 api.deepseek.com；不写入项目、问题记录或日志。"));
-            if (JOptionPane.showConfirmDialog(dialog, panel, "配置 DeepSeek API Key", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) {
+            if (JOptionPane.showConfirmDialog(frame, panel, "配置 DeepSeek API Key", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) {
                 field.setText(""); status.setText("已取消配置，未发送请求。"); return;
             }
             char[] password = field.getPassword(); String key = new String(password).strip(); Arrays.fill(password, '\0'); field.setText("");
             try { DeepSeekClient.validateKey(key); } catch (IOException error) { status.setText(error.getMessage()); return; }
             saving = true; refreshButtons(); status.setText("正在保存 API Key 到 IDEA 凭据库…");
-            background(dialog, () -> {
+            background(frame, () -> {
                 try { DeepSeekCredentials.save(key); return true; }
                 catch (RuntimeException error) { throw new IOException("无法保存到 IDEA 凭据库；请检查 Passwords 设置，未发送请求。"); }
             }, ignored -> { saving = false; status.setText("API Key 已写入凭据库并通过回读检查。"); refreshButtons(); if (after != null) after.run(); },
@@ -273,7 +296,7 @@ public final class IssueRecords implements Disposable {
             if (legacy || saving || requesting) return;
             Issue previous = saved; Optional<Issue.Analysis> captured = analysis;
             saving = true; refreshButtons(); status.setText("正在保存到报错项目…");
-            background(dialog, () -> {
+            background(frame, () -> {
                 IssueStore store = projectStore();
                 if (previous == null) return store.create(id, projectName, segments, Issue.Notes.empty(), captured);
                 if (captured.isEmpty()) return store.read(id);
@@ -288,19 +311,27 @@ public final class IssueRecords implements Disposable {
     }
 
     private JDialog window(String title) {
-        JDialog dialog = new JDialog(WindowManager.getInstance().getFrame(project), title, false); dialogs.add(dialog);
+        JDialog dialog = new JDialog(WindowManager.getInstance().getFrame(project), title, false);
         dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
-        dialog.addWindowListener(new WindowAdapter() {
-            @Override public void windowClosed(WindowEvent event) {
-                dialogs.remove(dialog); editors.values().removeIf(editor -> editor.dialog == dialog);
-                if (browser == dialog) browser = null;
-            }
-        }); return dialog;
+        track(dialog);
+        return dialog;
     }
-    private void show(JDialog dialog, int width, int height) {
+    private void track(Window window) {
+        windows.add(window);
+        window.addWindowListener(new WindowAdapter() {
+            @Override public void windowClosed(WindowEvent event) {
+                windows.remove(window);
+                editors.values().removeIf(editor -> editor.frame == window);
+                if (browser == window) browser = null;
+            }
+        });
+    }
+    private void show(Window window, int width, int height) {
+        Frame owner = WindowManager.getInstance().getFrame(project);
+        if (window instanceof JFrame && owner != null) window.setIconImages(owner.getIconImages());
         Dimension screen = Toolkit.getDefaultToolkit().getScreenSize();
-        dialog.setSize(Math.min(width, screen.width - 80), Math.min(height, screen.height - 100));
-        dialog.setLocationRelativeTo(WindowManager.getInstance().getFrame(project)); dialog.setVisible(true);
+        window.setSize(Math.min(width, screen.width - 80), Math.min(height, screen.height - 100));
+        window.setLocationRelativeTo(owner); window.setVisible(true);
     }
     private static JLabel label(String text) { JLabel label = new JLabel(); label.putClientProperty("html.disable", true); label.setText(text); return label; }
     private static JTextArea area(boolean wrap) {
@@ -308,21 +339,21 @@ public final class IssueRecords implements Disposable {
         text.setLineWrap(wrap); text.setWrapStyleWord(wrap); return text;
     }
     private interface Work<T> { T run() throws Exception; }
-    private <T> Future<?> background(JDialog dialog, Work<T> work, Consumer<T> success, Consumer<String> failure) {
+    private <T> Future<?> background(Window window, Work<T> work, Consumer<T> success, Consumer<String> failure) {
         var app = ApplicationManager.getApplication();
         return app.executeOnPooledThread(() -> {
             try {
                 T result = work.run();
-                app.invokeLater(() -> { if (dialog.isDisplayable()) success.accept(result); }, ModalityState.any(), project.getDisposed());
+                app.invokeLater(() -> { if (window.isDisplayable()) success.accept(result); }, ModalityState.any(), project.getDisposed());
             } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
             catch (Exception error) {
                 String message = error instanceof IOException ? error.getMessage() : "操作未完成，未改写已有记录。";
-                app.invokeLater(() -> { if (dialog.isDisplayable()) failure.accept(message); }, ModalityState.any(), project.getDisposed());
+                app.invokeLater(() -> { if (window.isDisplayable()) failure.accept(message); }, ModalityState.any(), project.getDisposed());
             }
         });
     }
     @Override public void dispose() {
         List.copyOf(editors.values()).forEach(AnalysisWindow::cancelRequest);
-        List.copyOf(dialogs).forEach(JDialog::dispose); dialogs.clear(); editors.clear();
+        List.copyOf(windows).forEach(Window::dispose); windows.clear(); editors.clear();
     }
 }
