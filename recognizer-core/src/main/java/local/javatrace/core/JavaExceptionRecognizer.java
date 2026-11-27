@@ -123,9 +123,11 @@ public final class JavaExceptionRecognizer {
         if (block.last() == lines.size() - 1 && last.contentEnd() == last.end()) {
             warnings.add(Warning.UNTERMINATED_LAST_LINE);
         }
+        if (block.inferredMessageLines() > 0) warnings.add(Warning.INFERRED_MESSAGE);
         // FOUND 表示当前规则没有触发警告，不保证程序曾完整输出全部信息；内容观察 notes 另存。
         return new RecognitionResult(warnings.isEmpty() ? Status.FOUND : Status.UNCERTAIN,
-                Optional.of(exceptionRange), contextRange, List.copyOf(block.reasons()), warnings, List.copyOf(block.notes()));
+                Optional.of(exceptionRange), contextRange, List.copyOf(block.reasons()), warnings, List.copyOf(block.notes()),
+                block.inferredMessageLines());
     }
 
     // ===== 区域 5：未命中或超限时返回无范围的结果 =====

@@ -20,6 +20,7 @@ final class PreviewEvidence {
         }).orElse("") : "";
         String diagnostics = result.status() + " · boundary=" + result.boundary() + " · structure=" + result.structure()
                 + " · reasons=" + result.reasons() + " · warnings=" + result.warnings() + " · notes=" + result.notes()
+                + (result.inferredMessageLines() == 0 ? "" : " · inferredMessageLines=" + result.inferredMessageLines())
                 + (snapshotWarnings.isEmpty() ? "" : " · snapshotWarnings=" + snapshotWarnings)
                 + (selected.equals(result.exceptionRange().orElseThrow()) ? "" : " · 用户按行调整范围");
         return new Issue.Segment(snapshot.substring(selected.startOffset(), selected.endOffset()), preceding, diagnostics);

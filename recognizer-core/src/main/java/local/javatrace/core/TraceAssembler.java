@@ -20,12 +20,15 @@ import java.util.List;
  * 关键位置：readBlock 决定起止；Trace 中的分支栈维护 Caused by / Suppressed 的归属。
  */
 final class TraceAssembler {
+    private static final int MAX_MESSAGE_LOOKAHEAD_LINES = 256;
+
     private TraceAssembler() {}
 
     // ===== 区域 1：候选块的数据与整份日志的遍历 =====
     // first、last 和 context 都是行索引。last 包含在主体内，context 为 -1 表示没有上下文。
     // 此处尚未产生字符范围，最后由 JavaExceptionRecognizer 按 LineIndex 转换。
-    record Block(int first, int last, int context, EnumSet<Reason> reasons, EnumSet<Warning> warnings, EnumSet<Note> notes) {}
+    record Block(int first, int last, int context, EnumSet<Reason> reasons, EnumSet<Warning> warnings,
+                 EnumSet<Note> notes, int inferredMessageLines) {}
 
     /** 顺序扫描所有行，发现候选块后从该块末尾的下一行继续，避免重复组合。 */
     static List<Block> assemble(List<Classified> lines) {
@@ -67,11 +70,9 @@ final class TraceAssembler {
                 cursor++;
                 continue;
             }
-            // 2.2 普通结构未命中，再尝试已支持的多行消息。无法确认时停止，不无限吞行。
+            // 2.2 首帧可封闭标题后的多行消息。未知消息的归属单独标记。
             int frame = trace.messageFrameAfter(lines, cursor);
             if (frame == cursor) break;
-            // 只有已知消息格式、分支还没有帧、后方存在同分支的合法帧时，
-            // 才接纳中间的诊断和空行。新的日志/标题/损坏帧始终阻断前瞻。
             trace.reasons.add(Reason.MULTILINE_MESSAGE);
             cursor = frame;
         }
@@ -115,7 +116,7 @@ final class TraceAssembler {
                 trace.reasons.add(Reason.ADJACENT_ERROR_CONTEXT);
             }
         }
-        return new Block(first, cursor - 1, context, trace.reasons, trace.warnings, trace.notes);
+        return new Block(first, cursor - 1, context, trace.reasons, trace.warnings, trace.notes, trace.inferredMessageLines);
     }
 
     private static boolean isTitle(Kind kind) {
@@ -140,10 +141,19 @@ final class TraceAssembler {
         private boolean hasFrames;
         private boolean circular;
         private final MessageFormat messageFormat;
+        private final boolean canInferMessage;
 
-        private Branch(int indent, MessageFormat messageFormat) {
+        private Branch(int indent, MessageFormat messageFormat, boolean canInferMessage) {
             this.indent = indent;
             this.messageFormat = messageFormat;
+            this.canInferMessage = canInferMessage;
+        }
+
+        private Branch(Classified title) {
+            this(title.indent(), title.messageFormat(), switch (title.kind()) {
+                case LIKELY_TITLE, THREAD_TITLE, CAUSE, SUPPRESSED -> true;
+                default -> false;
+            });
         }
 
         private boolean acceptsFrame(int indent) {
@@ -162,21 +172,22 @@ final class TraceAssembler {
         private final Deque<Branch> branches = new ArrayDeque<>();
         private final boolean eventBounded;
         private final String prefix;
+        private int inferredMessageLines;
 
         private Trace(Classified start, boolean hasHeader) {
             eventBounded = start.eventBounded();
             prefix = start.prefix();
             if (hasHeader) {
-                branches.push(new Branch(start.indent(), start.messageFormat()));
+                branches.push(new Branch(start));
                 reasons.add(Reason.THROWABLE_HEADER);
             } else {
                 // 有调用帧或原因链但没有标题时，保留片段并标记缺少标题。
                 warnings.add(Warning.MISSING_HEADER);
                 if (start.kind() == Kind.FRAME || start.kind() == Kind.ELISION) {
-                    branches.push(new Branch(-1, MessageFormat.NONE));
+                    branches.push(new Branch(-1, MessageFormat.NONE, false));
                     accept(start);
                 } else {
-                    branches.push(new Branch(start.indent(), start.messageFormat()));
+                    branches.push(new Branch(start));
                     reasons.add(start.kind() == Kind.CAUSE || start.kind() == Kind.CIRCULAR_CAUSE ? Reason.CAUSE : Reason.SUPPRESSED);
                     if(start.kind() == Kind.CIRCULAR_CAUSE || start.kind() == Kind.CIRCULAR_SUPPRESSED) {
                         branches.peek().circular = true;
@@ -195,44 +206,61 @@ final class TraceAssembler {
             };
         }
 
-        // ===== 区域 5：MyBatis / MySQL 已知多行消息的有限前瞻 =====
-        // 只在当前分支的首帧之前，查找“已知诊断行/空行 → 同分支合法帧”。
-        // 返回后方帧的位置才表示中间消息可接纳；返回 first 表示不能证明归属。
-        // 新日志、独立标题、未知消息等都会阻断，不靠单个异常类名就任意扩大范围。
+        // ===== 区域 5：由同一分支首帧封闭多行消息 =====
+        // 日志、独立标题、损坏结构和前缀变化都会阻断前瞻。
         private int messageFrameAfter(List<Classified> lines, int first) {
             Branch active = branches.peek();
             if (active.hasFrames || active.hasSuppressed || active.circular
-                    || (active.messageFormat == MessageFormat.NONE && !eventBounded)) return first;
+                    || (active.messageFormat == MessageFormat.NONE && !eventBounded && !active.canInferMessage)) return first;
             Kind detail = switch (active.messageFormat) {
                 case MYBATIS, MYBATIS_SPRING_SQL_GRAMMAR -> Kind.MYBATIS_DETAIL;
-                case NONE, MYSQL -> Kind.MYSQL_DETAIL;
+                case MYSQL -> Kind.MYSQL_DETAIL;
+                case NONE -> eventBounded ? Kind.MYSQL_DETAIL : null;
             };
-            boolean hasDetail = false;
+            boolean hasMessageEvidence = false;
             boolean hasKnownDetail = false;
-            boolean expectFrame = false;
-            for (int index = first; index < Math.min(lines.size(), first + 256); index++) {
+            int inferred = 0;
+            int limit = Math.min(lines.size(), first + MAX_MESSAGE_LOOKAHEAD_LINES);
+            for (int index = first; index < limit; index++) {
                 Classified line = lines.get(index);
                 if (!prefix.equals(line.prefix())) return first;
                 if (line.kind() == Kind.FRAME) {
-                    return hasDetail && active.acceptsFrame(line.indent()) ? index : first;
+                    if (!active.acceptsFrame(line.indent())) return first;
+                    if (!hasMessageEvidence && inferred == 0 && active.canInferMessage) {
+                        // 只有空行时，按标题和首帧推定中间的原文空行。
+                        inferred = index - first;
+                    }
+                    if (!hasMessageEvidence && inferred == 0) return first;
+                    inferredMessageLines += inferred;
+                    return index;
                 }
-                if (expectFrame) return first;
+                if (line.kind() == Kind.BLANK) continue;
                 boolean sameIndent = line.indent() == active.indent;
-                if (active.messageFormat == MessageFormat.MYBATIS_SPRING_SQL_GRAMMAR && hasKnownDetail
-                        && sameIndent && line.kind() == Kind.SPRING_SQL_GRAMMAR_SUFFIX) {
-                    // 摘要是 MyBatis 诊断的最后一行，下一行必须是同分支的合法首帧。
-                    expectFrame = true;
-                    continue;
-                }
-                boolean known = line.kind() == detail && sameIndent;
-                boolean generic = eventBounded && (line.kind() == Kind.OTHER
+                boolean knownDetail = line.kind() == detail && sameIndent;
+                boolean knownSuffix = active.messageFormat == MessageFormat.MYBATIS_SPRING_SQL_GRAMMAR
+                        && hasKnownDetail && sameIndent && line.kind() == Kind.SPRING_SQL_GRAMMAR_SUFFIX
+                        && index + 1 < limit && lines.get(index + 1).kind() == Kind.FRAME;
+                boolean timedMessage = eventBounded && (line.kind() == Kind.OTHER
                         || line.kind() == Kind.SPRING_SQL_GRAMMAR_SUFFIX
                         || (line.kind() == Kind.LOG || line.kind() == Kind.ERROR_LOG) && !prefix.isEmpty());
-                if (line.kind() != Kind.BLANK && !generic && !known) return first;
-                hasKnownDetail |= known;
-                hasDetail |= known || generic;
+                if (knownDetail || knownSuffix || timedMessage) {
+                    hasKnownDetail |= knownDetail;
+                    hasMessageEvidence = true;
+                } else if (active.canInferMessage && isMessageText(line.kind())) {
+                    inferred++;
+                } else {
+                    return first;
+                }
             }
+            if (limit < lines.size()) warnings.add(Warning.MESSAGE_LOOKAHEAD_LIMIT);
             return first;
+        }
+
+        private static boolean isMessageText(Kind kind) {
+            return switch (kind) {
+                case OTHER, MYBATIS_DETAIL, MYSQL_DETAIL, SPRING_SQL_GRAMMAR_SUFFIX -> true;
+                default -> false;
+            };
         }
 
         // ===== 区域 6：把调用帧或省略帧接到当前分支 =====
@@ -276,7 +304,7 @@ final class TraceAssembler {
                 parent.frameIndent = indent;
                 parent.hasSuppressed = true;
             }
-            branches.push(new Branch(indent, line.messageFormat()));
+            branches.push(new Branch(line));
             if(line.kind() == Kind.CIRCULAR_CAUSE || line.kind() == Kind.CIRCULAR_SUPPRESSED) {
                 branches.peek().circular = true;
                 reasons.add(Reason.CIRCULAR_REFERENCE);

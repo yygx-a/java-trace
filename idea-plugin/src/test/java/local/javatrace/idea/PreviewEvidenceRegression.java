@@ -36,6 +36,13 @@ public final class PreviewEvidenceRegression {
                 && RecognitionPresentation.summary(cropped).contains("部分分支未见调用帧"),"crop and content both visible");
         var header=new JavaExceptionRecognizer().recognize("example.QuietException: quiet\nINFO done\n",0);
         check(RecognitionPresentation.summary(header).startsWith("已定位异常标题") && RecognitionPresentation.summary(header).contains("无法确认"),"header-only evidence labelled honestly");
+        String inferredText = "example.ImportException: invalid\r\n第 5 项为空 😃\r\nfield[5]: missing value\r\n\tat Demo.run(Demo.java:3)\r\n";
+        var inferred = new JavaExceptionRecognizer().recognize(inferredText, inferredText.indexOf("第"));
+        check(RecognitionPresentation.summary(inferred).contains("2 行报错说明按堆栈结构推定")
+                && inferred.boundary() == RecognitionResult.Boundary.REVIEW_REQUIRED, "inferred range and count visible in previews");
+        var inferredEvidence = PreviewEvidence.segment(inferredText, inferred.exceptionRange().orElseThrow(), inferred, false);
+        check(inferredEvidence.exceptionText().equals(inferredText) && inferredEvidence.diagnostics().contains("inferredMessageLines=2"),
+                "original inferred message and its count retained in saved evidence");
         var manual=ManualSelection.result(snapshot,new TextRange(1,context.length()+a.length()-2));
         var manualEvidence=PreviewEvidence.segment(snapshot,manual.exceptionRange().orElseThrow(),manual,true);
         check(manualEvidence.exceptionText().equals(snapshot.substring(1,context.length()+a.length()-2)) && manualEvidence.context().isEmpty(),"manual range is exact, context is not inferred");

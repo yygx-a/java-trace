@@ -16,7 +16,8 @@ public record RecognitionResult(
         Optional<TextRange> contextRange,
         List<Reason> reasons,
         List<Warning> warnings,
-        List<Note> notes
+        List<Note> notes,
+        int inferredMessageLines
 ) {
     public RecognitionResult {
         Objects.requireNonNull(status, "status");
@@ -26,6 +27,12 @@ public record RecognitionResult(
         reasons = List.copyOf(reasons);
         warnings = List.copyOf(warnings);
         notes = List.copyOf(notes);
+        if (inferredMessageLines < 0) throw new IllegalArgumentException("Negative inferred message line count");
+    }
+
+    public RecognitionResult(Status status, Optional<TextRange> exceptionRange, Optional<TextRange> contextRange,
+                             List<Reason> reasons, List<Warning> warnings, List<Note> notes) {
+        this(status, exceptionRange, contextRange, reasons, warnings, notes, 0);
     }
 
     /** 兼容 v0 调用方；新增内容观察不会丢失或降级为边界警告。 */
@@ -73,6 +80,7 @@ public record RecognitionResult(
     /** 记录上限、残缺输入和无法明确判断的边界，供界面提示。 */
     public enum Warning {
         CHARACTER_LIMIT, LINE_LIMIT, MISSING_HEADER, MISSING_STACK,
-        AMBIGUOUS_BOUNDARY, SNAPSHOT_START_TRUNCATED, SNAPSHOT_END_TRUNCATED, UNTERMINATED_LAST_LINE
+        AMBIGUOUS_BOUNDARY, SNAPSHOT_START_TRUNCATED, SNAPSHOT_END_TRUNCATED, UNTERMINATED_LAST_LINE,
+        INFERRED_MESSAGE, MESSAGE_LOOKAHEAD_LIMIT
     }
 }

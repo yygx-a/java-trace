@@ -6,7 +6,7 @@ development	jdk-stackless-wrapper	33:247	FOUND	-	BRANCH_WITHOUT_FRAMES	0:33
 development	jdk-stackless-cause	33:172	FOUND	-	BRANCH_WITHOUT_FRAMES	0:33
 development	jdk-header-only	33:78	UNCERTAIN	MISSING_STACK	-	0:33
 development	frame-fragment	0:39	UNCERTAIN	MISSING_HEADER	-	-
-development	unknown-message	33:74;96:135	UNCERTAIN;UNCERTAIN	MISSING_STACK,AMBIGUOUS_BOUNDARY;MISSING_HEADER	-;-	0:33;-
+development	unknown-message	33:135	UNCERTAIN	INFERRED_MESSAGE	-	0:33
 development	adjacent-independent	0:150;150:229	FOUND;FOUND	-;-	-;-	-;-
 development	logback-basic	74:241	FOUND	-	-	0:74
 development	logback-packaging	65:241	FOUND	-	-	0:65

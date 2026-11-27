@@ -39,10 +39,7 @@ public final class RuntimeCorpusGenerator {
         String fragment = "\tat example.Corpus.run(Corpus.java:42)\n";
         add("development", "frame-fragment", "", fragment, INFO, "UNCERTAIN", "MISSING_HEADER", "-");
         String full = print(throwable("message\nunknown extra message"));
-        int end = full.indexOf('\n') + 1;
-        cases.add(new Case("development", "unknown-message", ERROR, full, INFO,
-                range(ERROR.length(), ERROR.length()+end)+";"+range(ERROR.length()+full.indexOf("\tat"), ERROR.length()+full.length()),
-                "UNCERTAIN;UNCERTAIN", "MISSING_STACK,AMBIGUOUS_BOUNDARY;MISSING_HEADER", "-;-"));
+        add("development", "unknown-message", ERROR, full, INFO, "UNCERTAIN", "INFERRED_MESSAGE", "-");
         pair("development", "adjacent-independent", "", chain, print(throwable("second")));
         logger("development", "logback-basic", false, "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger - %msg%n%ex", chain());
         logger("development", "logback-packaging", false, "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level %logger - %msg%n%xEx", chain());

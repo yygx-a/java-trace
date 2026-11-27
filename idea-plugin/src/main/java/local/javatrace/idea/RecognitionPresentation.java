@@ -17,7 +17,7 @@ final class RecognitionPresentation {
         else if (result.structure() == RecognitionResult.Structure.HEADER_ONLY) heading = "已定位异常标题";
         else heading = "已定位异常";
         List<String> details = new ArrayList<>();
-        String warnings = warnings(result.warnings());
+        String warnings = warnings(result.warnings(), result.inferredMessageLines());
         if (!warnings.isEmpty()) details.add(warnings);
         if (result.notes().contains(RecognitionResult.Note.BRANCH_WITHOUT_FRAMES)) {
             details.add("部分分支未见调用帧，可能为无堆栈异常");
@@ -26,6 +26,10 @@ final class RecognitionPresentation {
     }
 
     static String warnings(List<RecognitionResult.Warning> warnings) {
+        return warnings(warnings, 0);
+    }
+
+    private static String warnings(List<RecognitionResult.Warning> warnings, int inferredMessageLines) {
         return warnings.stream().map(warning -> switch (warning) {
             case SNAPSHOT_START_TRUNCATED -> "控制台开头可能已被裁剪";
             case SNAPSHOT_END_TRUNCATED -> "快照结尾被截断";
@@ -35,6 +39,9 @@ final class RecognitionPresentation {
             case MISSING_STACK -> "仅见标题，无法确认调用帧是否被省略";
             case CHARACTER_LIMIT -> "超过字符扫描上限";
             case LINE_LIMIT -> "超过行数扫描上限";
+            case INFERRED_MESSAGE -> inferredMessageLines == 0 ? "报错说明按堆栈结构推定"
+                    : inferredMessageLines + " 行报错说明按堆栈结构推定";
+            case MESSAGE_LOOKAHEAD_LIMIT -> "在多行消息的扫描上限内未找到首个调用帧";
         }).collect(Collectors.joining("；"));
     }
 }

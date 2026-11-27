@@ -94,19 +94,30 @@ final class RealLogRegression {
             equal(result, RECOGNIZER.recognize(text, text.indexOf("🧩") + 1), "original UTF-16 anchor inside the diagnostic");
         }
         String body = title + details + suffix + frames;
-        equal(new TextRange(0, body.length()), RECOGNIZER.recognize(body, 0).exceptionRange().orElseThrow(),
-                "known Spring/MyBatis grammar does not require a timestamped log header");
-        for (String rest : List.of(suffix + frames, details + suffix + unrelated + frames,
-                details + "unexpected message\n" + suffix + frames, details + suffix + NPE,
-                details + "  " + suffix + frames, details + suffix + details + frames,
+        var known = RECOGNIZER.recognize(body, 0);
+        equal(new TextRange(0, body.length()), known.exceptionRange().orElseThrow(), "known grammar without timestamp");
+        equal(0, known.inferredMessageLines(), "known Spring/MyBatis grammar is explicit evidence");
+        String restyled = title + "数据库返回了一段新的诊断文字 🧩\nerror[1]: statement rejected\n" + frames;
+        var restyledBatch = RECOGNIZER.recognizeAll(restyled, false, false).exceptions();
+        equal(1, restyledBatch.size(), "wording can change without splitting the SQL trace");
+        equal(restyled, slice(restyled, restyledBatch.getFirst().exceptionRange().orElseThrow()), "restyled SQL raw range");
+        equal(2, restyledBatch.getFirst().inferredMessageLines(), "unfamiliar SQL wording inferred by structure");
+        for (String rest : List.of(suffix + frames, details + "unexpected message\n" + suffix + frames,
+                details + "  " + suffix + frames, details + suffix + details + frames)) {
+            String text = title + rest;
+            var result = RECOGNIZER.recognize(text, 0);
+            equal(text, slice(text, result.exceptionRange().orElseThrow()), "irregular diagnostic still sealed by the first frame");
+            equal(1, result.inferredMessageLines(), "only the unsupported line needs inference");
+        }
+        for (String rest : List.of(details + suffix + unrelated + frames, details + suffix + NPE,
                 details.repeat(53) + suffix + frames)) {
             var result = RECOGNIZER.recognize(title + rest, 0);
             equal(Status.UNCERTAIN, result.status(), "unconfirmed SQL diagnostics stay uncertain");
-            equal(new TextRange(0, title.length()), result.exceptionRange().orElseThrow(), "no merge without supported diagnostics and a nearby frame");
+            equal(new TextRange(0, title.length()), result.exceptionRange().orElseThrow(), "no merge without a frame before the boundary");
         }
         String otherTitle = "java.lang.IllegalStateException: mentioned " + title;
         var other = RECOGNIZER.recognize(otherTitle + details + suffix + frames, 0);
-        equal(new TextRange(0, otherTitle.length()), other.exceptionRange().orElseThrow(), "mentioning the Spring type does not establish ownership");
+        equal(6, other.inferredMessageLines(), "mentioning the Spring type provides no extra confidence");
     }
 
     private static void logHeaders() {
@@ -177,8 +188,6 @@ final class RealLogRegression {
             equal(Status.UNCERTAIN, RECOGNIZER.recognize(text, 0).status(), "unconfirmed remains uncertain");
         }
         for (String text : List.of(diagnostic + frame,
-                "java.lang.IllegalStateException: ordinary\n" + diagnostic + frame,
-                title + "arbitrary multiline message\n" + frame,
                 "com.mysql.cj.jdbc.exceptions.CommunicationsException: failed\n\n" + info
                         + "The last packet sent successfully to the server was 0 milliseconds ago.\n" + frame)) {
             var result = RECOGNIZER.recognize(text, 0);

@@ -17,9 +17,9 @@ idea-plugin ──> recognizer-core
 
 偏移均为Java String的UTF-16索引，范围为`[startOffset, endOffset)`，可直接substring。原文、CRLF、ANSI及前缀不被修改；分类视图规范化不能改变返回坐标。锚点在换行符上归前一行，文末归最后实际行；null/越界参数为编程错误。
 
-`RecognitionResult`区分FOUND/UNCERTAIN/NOT_FOUND，主体与可选前置ERROR上下文分开；reasons为结构证据，warnings为不完整/边界/上限问题，notes为无帧分支等内容观察。UNCERTAIN可没有安全范围。FOUND仅表示当前规则未触发警告，不代表数学上的正确性。
+`RecognitionResult` 区分 FOUND、UNCERTAIN 和 NOT_FOUND，并分别提供主体与可选的前置 ERROR 上下文。reasons 记录结构证据，warnings 记录边界、完整性或扫描上限，notes 记录无帧分支等观察。FOUND 表示匹配规则且未触发警告。UNCERTAIN 可能缺少可预览范围。按首帧位置接纳的消息通过 `inferredMessageLines()` 和 `INFERRED_MESSAGE` 暴露，插件允许直接预览与复制，范围标为需核对。
 
-扫描上限为100万UTF-16单元或2万物理行，超限拒绝；目前不做滑动局部扫描。未知前缀/不可解释消息/交错不能默默吞并。具体适配边界见[格式契约](text-format-contract.md)。
+扫描上限为 100 万 UTF-16 单元或 2 万物理行，超限时报告限制。多行消息的首帧另有 256 行前瞻。具体适配边界见[格式契约](text-format-contract.md)。
 
 ## 证据与限制
 

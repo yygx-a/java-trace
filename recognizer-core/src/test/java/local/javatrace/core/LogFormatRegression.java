@@ -51,13 +51,9 @@ final class LogFormatRegression {
         fragmented(HEAD + TITLE + FRAME + HEAD + FRAME, "prefix appears");
         fragmented(HEAD + TITLE + HEAD.replace("10:20:30.123", "10:20:31.123") + FRAME, "timestamp changes");
         fragmented(HEAD + TITLE + "at broken frame\n" + FRAME, "broken message boundary");
-        fragmented(TITLE + "unknown message\n" + FRAME, "no event evidence");
         fragmented(HEAD + TITLE + "unfinished message\n", "no closing frame");
         fragmented(HEAD + TITLE + "INFO independent event\n" + FRAME, "new event before first frame");
-        var unrelated = R.recognizeAll(HEAD + TITLE + HEAD + FRAME + TITLE + "unknown message\n" + FRAME, false, false);
-        equal(UNCERTAIN, unrelated.exceptions().get(1).status(), "prefixed frame is not evidence of a new raw event");
-        String budget = HEAD + TITLE + "message\n".repeat(256) + FRAME;
-        fragmented(budget, "message lookahead limit");
+        structuralMessages();
         var tail = R.recognizeAll(HEAD + TITLE + FRAME + "trailing ordinary text\n", false, false).exceptions().getFirst();
         equal(HEAD + TITLE + FRAME, slice(HEAD + TITLE + FRAME + "trailing ordinary text\n", tail), "text after frame excluded");
         equal(true, tail.warnings().contains(AMBIGUOUS_BOUNDARY), "unexplained tail reported");
@@ -65,14 +61,69 @@ final class LogFormatRegression {
         return assertions;
     }
 
+    private static void structuralMessages() {
+        String message = "在第 18 行读到空值 😀\n\nfield[2]: expected a date\n";
+        String nested = "\tSuppressed: example.CloseFailure: cleanup\n"
+                + "\t临时输入流已提前关闭\n\t\tat example.Input.close(Input.java:18)\n"
+                + "Caused by: java.io.IOException: failed to read\n"
+                + "details: missing metadata\n" + FRAME;
+        String body = TITLE + message + FRAME + nested;
+        for (String nl : List.of("\n", "\r\n")) {
+            exact("INFO before\n", body, "INFO after\n", nl, "unfamiliar root and branch messages", 4);
+            exact("", "Exception in thread \"main\" example.ParseFailure: invalid\n" + message + FRAME,
+                    "", nl, "thread header with a custom throwable", 2);
+            exact("", "ERROR example.App - " + TITLE + message + FRAME, "", nl, "inline header without timestamp", 2);
+            exact("", TITLE + "\n\n" + FRAME, "", nl, "blank-only gap", 2);
+        }
+
+        String independent = "example.ImportFailure: independent\n" + FRAME;
+        String before = TITLE + message;
+        var split = R.recognizeAll(before + independent, false, false).exceptions();
+        equal(2, split.size(), "new independent title stops lookahead even without an Exception suffix");
+        equal(TITLE, slice(before + independent, split.getFirst()), "unproven preceding message excluded");
+        equal(independent, slice(before + independent, split.getLast()), "independent trace intact");
+
+        for (String boundary : List.of(HEAD.replace("worker-1", "worker-2") + "ordinary message\n",
+                "Process finished with exit code 0\n", "\tat damaged frame\n", "at example.App.run(App.java:12)\n")) {
+            String text = before + boundary + FRAME;
+            fragmented(text, "hard boundary before frame: " + boundary.strip());
+            equal(0, R.recognize(text, 0).inferredMessageLines(), "no inferred lines across a hard boundary");
+        }
+        String fake = "INFO Example text mentions java.lang.IllegalStateException\n" + message;
+        equal(0, R.recognizeAll(fake, false, false).exceptions().size(), "exception mention in a log line is not a title");
+        var fragment = R.recognizeAll(fake + FRAME, false, false).exceptions().getFirst();
+        equal(FRAME, slice(fake + FRAME, fragment), "an orphan frame does not turn a logged mention into a trace");
+        equal(List.of(MISSING_HEADER), fragment.warnings(), "orphan frame is labelled as a fragment");
+        String weakTitle = "example.Parser: service label\n" + message + FRAME;
+        equal(NOT_FOUND, R.recognize(weakTitle, 0).status(), "weak title does not claim a distant frame");
+        equal(FRAME, slice(weakTitle, R.recognizeAll(weakTitle, false, false).exceptions().getFirst()), "orphan frame retained");
+        String unconfirmed = TITLE + message;
+        equal(TITLE, slice(unconfirmed, R.recognize(unconfirmed, 0)), "header alone does not claim following message");
+        equal(0, R.recognize(unconfirmed, 0).inferredMessageLines(), "no frame means no inference");
+
+        String atLimit = TITLE + "extra message\n".repeat(255) + FRAME;
+        var bounded = R.recognize(atLimit, 0);
+        equal(atLimit, slice(atLimit, bounded), "last allowed frame seals the full message");
+        equal(255, bounded.inferredMessageLines(), "all inferred lines before last allowed frame");
+        String budget = TITLE + "extra message\n".repeat(256) + FRAME;
+        fragmented(budget, "message lookahead limit");
+        equal(true, R.recognize(budget, 0).warnings().contains(MESSAGE_LOOKAHEAD_LIMIT), "message lookahead limit reported");
+    }
+
     private static void exact(String before, String body, String after, String nl, String label) {
+        exact(before, body, after, nl, label, 0);
+    }
+
+    private static void exact(String before, String body, String after, String nl, String label, int inferredLines) {
         before = before.replace("\n", nl); body = body.replace("\n", nl); after = after.replace("\n", nl);
         String text = before + body + after;
         var batch = R.recognizeAll(text, false, false);
         equal(1, batch.exceptions().size(), label + " count");
         var expected = new TextRange(before.length(), before.length() + body.length());
         var item = batch.exceptions().getFirst();
-        equal(FOUND, item.status(), label + " status");
+        equal(inferredLines == 0 ? FOUND : UNCERTAIN, item.status(), label + " status");
+        equal(inferredLines, item.inferredMessageLines(), label + " inferred message count");
+        equal(inferredLines > 0, item.warnings().contains(INFERRED_MESSAGE), label + " explicit inferred-message warning");
         equal(expected, item.exceptionRange().orElseThrow(), label + " UTF16 range");
         equal(body, slice(text, item), label + " unchanged original");
         for (int anchor = expected.startOffset(); anchor < expected.endOffset(); anchor++) {
